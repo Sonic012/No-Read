@@ -80,7 +80,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "httpx", specifier = ">=0.28.1" }]
+requires-dist = [{ name = "httpx", specifier = ">=0.28.0" }]
 
 [[package]]
 name = "sniffio"
