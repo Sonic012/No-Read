@@ -1,7 +1,7 @@
 [project]
 name = "no-read"
 version = "0.1.0"
-description = "Add your description here"
+description = "sync weread infomation to Notion"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
