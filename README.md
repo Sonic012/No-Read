@@ -1,59 +1,111 @@
-# 微信读书同步到Notion
+# No-Read 项目
 
-## 项目简介
-本项目旨在将微信读书个人账号中的书架、在读书籍、书籍评论、划线内容和个人笔记等信息自动同步到Notion笔记中，方便知识管理与归档。
+这是一个基于 Playwright 的爬虫项目，使用 uv 进行依赖管理。
 
-## 主要功能
-- 同步微信读书书架书单到Notion
-- 同步当前在读书籍信息到Notion
-- 同步书籍评论到Notion
-- 同步划线内容和个人笔记到Notion
+## 环境要求
 
-## 技术栈
-- Python 3.8+
-- [Playwright](https://playwright.dev/python/)（用于自动化登录和数据抓取）
-- [aiohttp](https://docs.aiohttp.org/)（用于异步HTTP请求）
-- [Notion API](https://developers.notion.com/)（用于数据写入Notion）
-- pytest（测试驱动开发）
+- Python 3.12+
+- uv (Python 包管理器)
 
-## 目录结构
+## 快速开始
+
+### 1. 安装 uv
+
+**macOS/Linux:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Windows:**
+```bash
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**或者使用 pip:**
+```bash
+pip install uv
+```
+
+### 2. 克隆项目
+```bash
+git clone <你的仓库地址>
+cd No-Read
+```
+
+### 3. 安装依赖
+```bash
+# uv 会自动创建虚拟环境并安装所有依赖
+uv sync
+```
+
+### 4. 安装 Playwright 浏览器
+```bash
+uv run playwright install
+```
+
+### 5. 运行项目
+```bash
+# 运行主程序
+uv run python src/main.py
+
+# 或者运行特定脚本
+uv run python your_script.py
+```
+
+## 开发指南
+
+### 添加新依赖
+```bash
+# 添加生产依赖
+uv add package_name
+
+# 添加开发依赖
+uv add --dev package_name
+```
+
+### 查看依赖
+```bash
+# 查看依赖树
+uv tree
+
+# 查看特定包信息
+uv show package_name
+```
+
+### 更新依赖
+```bash
+uv sync
+```
+
+## 项目结构
+
 ```
 No-Read/
-├── src/                # 核心代码
-│   ├── wechat_reader/  # 微信读书相关逻辑
-│   ├── notion/         # Notion API相关逻辑
-│   └── sync/           # 同步流程与调度
-├── tests/              # 测试用例
-├── README.md           # 项目说明
-├── requirements.txt    # 依赖列表
-└── .env.example        # 环境变量示例
+├── src/                    # 源代码
+│   ├── main.py            # 主入口
+│   ├── notion/            # Notion 相关
+│   ├── sync/              # 同步逻辑
+│   └── wechat_reader/     # 微信读书相关
+├── tests/                 # 测试文件
+├── pyproject.toml         # 项目配置和依赖
+├── uv.lock               # 锁定文件（不要手动修改）
+└── README.md             # 项目说明
 ```
 
-## 开发模式
-本项目采用测试驱动开发（TDD），即先编写测试用例，再实现功能代码。
+## 常见问题
 
-## 使用方法
-1. 克隆本项目：
-   ```bash
-   git clone https://github.com/yourname/No-Read.git
-   cd No-Read
-   ```
-2. 安装依赖：
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. 配置环境变量（参考.env.example）
-4. 运行测试：
-   ```bash
-   pytest
-   ```
-5. 启动同步脚本：
-   ```bash
-   python src/main.py
-   ```
+### Q: 如何激活虚拟环境？
+A: 使用 uv 不需要手动激活虚拟环境，直接用 `uv run` 即可。
 
-## 贡献指南
-欢迎提交PR和Issue，完善功能和修复bug。
+### Q: 如何查看当前 Python 版本？
+A: 运行 `uv run python --version`
 
-## License
-MIT
+### Q: 依赖安装失败怎么办？
+A: 尝试清理缓存：`uv cache clean`，然后重新运行 `uv sync`
+
+### Q: 如何导出 requirements.txt？
+A: 运行 `uv export --format requirements-txt > requirements.txt`
+
+## 许可证
+
+[你的许可证信息]
