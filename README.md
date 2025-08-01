@@ -234,6 +234,42 @@ LOG_LEVEL = "DEBUG"
 
 ## 🔄 定期同步
 
+### 使用 GitHub Actions（推荐）
+
+本项目已配置 GitHub Actions 工作流，可以自动同步你的微信读书数据到 Notion。
+
+#### 快速设置
+
+1. **Fork 本仓库**到你的 GitHub 账号
+2. **配置环境变量**：
+   - 进入你的仓库 → Settings → Secrets and variables → Actions
+   - 添加以下 **Secrets**：
+     - `WEREAD_COOKIE`: 你的微信读书 Cookie
+     - `NOTION_TOKEN`: 你的 Notion API Token
+     - `NOTION_DATABASE_ID`: 你的 Notion 数据库 ID
+   - 可选：添加 **Variables** 来自定义同步行为
+3. **手动触发**：进入 Actions 标签页，选择 "Sync WeChat Reading to Notion" 工作流，点击 "Run workflow"
+4. **自动同步**：工作流会每天凌晨 2 点自动运行
+
+#### 详细配置
+
+📖 完整的配置指南请查看：[GitHub Actions 配置指南](docs/GITHUB_SETUP.md)
+
+#### 本地测试
+
+```bash
+# 设置环境变量
+export WEREAD_COOKIE="your_cookie"
+export NOTION_TOKEN="your_token"
+export NOTION_DATABASE_ID="your_database_id"
+
+# 测试配置
+python scripts/test_config.py
+
+# 运行同步
+python main.py
+```
+
 ### 使用 cron（Linux/macOS）
 
 ```bash
