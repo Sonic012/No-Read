@@ -1,0 +1,55 @@
+name: Test Configuration
+
+on:
+  workflow_dispatch:  # Manual trigger only
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/**'
+      - 'config.py'
+      - 'config.example.py'
+
+jobs:
+  test-config:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt || pip install -e .
+        
+    - name: Test configuration injection
+      run: |
+        python scripts/test_config.py
+      env:
+        WEREAD_COOKIE: ${{ secrets.WEREAD_COOKIE }}
+        NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
+        SYNC_ALL_BOOKS: ${{ vars.SYNC_ALL_BOOKS || 'true' }}
+        SYNC_FINISHED_BOOKS: ${{ vars.SYNC_FINISHED_BOOKS || 'true' }}
+        SYNC_UNFINISHED_BOOKS: ${{ vars.SYNC_UNFINISHED_BOOKS || 'true' }}
+        BATCH_SIZE: ${{ vars.BATCH_SIZE || '5' }}
+        LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
+        
+    - name: Validate config.py
+      run: |
+        python -c "
+        import config
+        print('✅ Config file is valid')
+        print(f'📋 WEREAD_COOKIE: {\"*\" * 10 if config.WEREAD_COOKIE else \"Not set\"}')
+        print(f'📋 NOTION_TOKEN: {\"*\" * 10 if config.NOTION_TOKEN else \"Not set\"}')
+        print(f'📋 NOTION_DATABASE_ID: {\"*\" * 10 if config.NOTION_DATABASE_ID else \"Not set\"}')
+        print(f'⚙️  SYNC_ALL_BOOKS: {config.SYNC_ALL_BOOKS}')
+        print(f'⚙️  BATCH_SIZE: {config.BATCH_SIZE}')
+        print(f'⚙️  LOG_LEVEL: {config.LOG_LEVEL}')
+        "
