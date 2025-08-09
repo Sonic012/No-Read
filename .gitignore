@@ -6,8 +6,8 @@
 **/__pycache__/
 *.pyc
 
-# Lockfiles (managed locally)
-uv.lock
+# Lockfiles
+# 保持 uv.lock 进入版本控制，以便可复现的环境
 
 # Logs (runtime artifacts)
 logs/
