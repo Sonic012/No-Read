@@ -1,11 +1,14 @@
-doc/ # Local & secrets
+# Local & secrets
 .env
 !.env.example
 
-# Caches
-__pycache__/
+# Caches & compiled
+**/__pycache__/
+*.pyc
+
+# Lockfiles (managed locally)
 uv.lock
 
-# Logs
+# Logs (runtime artifacts)
 logs/
 
