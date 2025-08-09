@@ -1,0 +1,11 @@
+doc/ # Local & secrets
+.env
+!.env.example
+
+# Caches
+__pycache__/
+uv.lock
+
+# Logs
+logs/
+

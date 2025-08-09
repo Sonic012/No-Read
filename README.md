@@ -115,6 +115,9 @@ NOTION_PARENT_PAGE_ID = "你的父页面ID"
 ### 6. 校验配置并运行同步
 
 ```bash
+# 准备环境变量
+# 可复制 `.env.example` 为 `.env` 并填入，或直接导出环境变量
+
 # 校验配置
 uv run python src/main.py check-config
 
@@ -251,11 +254,14 @@ LOG_LEVEL = "DEBUG"
 2) 校验通过后执行 `sync`；
 3) 输出日志会作为 Artifact 上传。
 
-在你的仓库 Settings → Secrets and variables → Actions 中配置以下 Secrets：
+在你的仓库 Settings → Secrets and variables → Actions 中配置以下 Secrets（名称需完全一致）：
 
 - `WEREAD_COOKIE`
 - `NOTION_TOKEN`
 - `NOTION_DATABASE_ID`
+- `NOTION_PARENT_PAGE_ID`（可选，若未提供数据库 ID 则必填）
+
+你也可以在 Actions 页面手动触发，并可通过输入框传入 `book_id` 只同步某本书。
 
 ### 使用 cron（Linux/macOS）
 
