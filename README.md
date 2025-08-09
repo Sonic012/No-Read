@@ -103,23 +103,32 @@ NOTION_PARENT_PAGE_ID = "你的父页面ID"
 ```
 程序会自动在该页面下创建书籍数据库。
 
-### 5. 运行同步
+### 5. 配置方式
+
+- 环境变量（推荐，便于 CI/CD 与生产部署）
+  - `WEREAD_COOKIE`
+  - `NOTION_TOKEN`
+  - `NOTION_DATABASE_ID`
+- 或者使用 `config.py`（从 `config.example.py` 复制并填写）。占位符会被视为无效值。
+- 支持 `.env` 文件（可选，需安装 `python-dotenv`，本项目已默认依赖）。
+
+### 6. 校验配置并运行同步
 
 ```bash
-# 同步所有书籍
-uv run python main.py sync
+# 校验配置
+uv run python src/main.py check-config
 
-# 或者使用 src/main.py
+# 同步所有书籍
 uv run python src/main.py sync
 
 # 查看同步状态
-uv run python main.py status
+uv run python src/main.py status
 
 # 同步指定书籍
-uv run python main.py sync <书籍ID>
+uv run python src/main.py sync <书籍ID>
 
 # 查看帮助
-uv run python main.py help
+uv run python src/main.py help
 ```
 
 ## 📖 使用说明
@@ -128,16 +137,16 @@ uv run python main.py help
 
 ```bash
 # 同步所有书籍（默认命令）
-python main.py sync
+python src/main.py sync
 
 # 同步指定书籍
-python main.py sync <book_id>
+python src/main.py sync <book_id>
 
 # 查看同步状态
-python main.py status
+python src/main.py status
 
 # 显示帮助信息
-python main.py help
+python src/main.py help
 ```
 
 ### 配置选项
@@ -233,6 +242,20 @@ LOG_LEVEL = "DEBUG"
 ```
 
 ## 🔄 定期同步
+
+### GitHub Actions（推荐）
+
+已提供工作流 `.github/workflows/sync.yml`，每天 UTC 23:00（北京时间次日 07:00）自动运行：
+
+1) 先执行 `check-config` 校验必要配置是否有效；
+2) 校验通过后执行 `sync`；
+3) 输出日志会作为 Artifact 上传。
+
+在你的仓库 Settings → Secrets and variables → Actions 中配置以下 Secrets：
+
+- `WEREAD_COOKIE`
+- `NOTION_TOKEN`
+- `NOTION_DATABASE_ID`
 
 ### 使用 cron（Linux/macOS）
 

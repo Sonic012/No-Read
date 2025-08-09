@@ -21,7 +21,7 @@ class NotionClient:
             rate_limit: 每秒最多请求次数
         """
         self.token = token or self._get_token_from_env()
-        self.database_id = database_id or self._get_database_id_from_env()
+        self.database_id = database_id or os.getenv('NOTION_DATABASE_ID')
         self.client = AsyncClient(auth=self.token)
         self.rate_limiter = AsyncLimiter(max_rate=rate_limit, time_period=1)
     
@@ -32,12 +32,7 @@ class NotionClient:
             raise ValueError("请设置 NOTION_TOKEN 环境变量或传入 token 参数")
         return token
     
-    def _get_database_id_from_env(self) -> str:
-        """从环境变量获取数据库 ID"""
-        database_id = os.getenv('NOTION_DATABASE_ID')
-        if not database_id:
-            raise ValueError("请设置 NOTION_DATABASE_ID 环境变量或传入 database_id 参数")
-        return database_id
+    # database_id 可选；若缺失可以通过 create_database_if_not_exists 创建
     
     async def create_book_page(self, book_info: BookInfo, notes: List[ReadingNote] = None, reviews: List[BookReview] = None) -> Dict[str, Any]:
         """

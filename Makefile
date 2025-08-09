@@ -12,11 +12,13 @@ help:
 # 安装依赖
 install:
 	uv sync
-	uv run playwright install
 
 # 运行主程序
 run:
 	uv run python src/main.py
+
+check-config:
+	uv run python src/main.py check-config
 
 # 运行测试
 test:

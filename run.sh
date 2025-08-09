@@ -11,13 +11,9 @@ if ! command -v uv &> /dev/null; then
     exit 1
 fi
 
-# 检查是否首次运行
-if [ ! -d ".venv" ]; then
-    echo "🔧 首次运行，正在安装依赖..."
-    uv sync
-    uv run playwright install
-fi
+echo "🔧 安装依赖..."
+uv sync
 
 # 启动项目
 echo "▶️  启动项目..."
-uv run python src/main.py 
+uv run python src/main.py "$@"

@@ -1,0 +1,59 @@
+name: WeRead to Notion Sync
+
+on:
+  schedule:
+    - cron: '0 23 * * *'  # 每天 07:00 CST/China (UTC+8 -> 23:00 UTC 前一日)
+  workflow_dispatch: {}
+
+jobs:
+  run-sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "UV_CACHE_DIR=$HOME/.cache/uv" >> $GITHUB_ENV
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv sync
+
+      - name: Validate config
+        env:
+          WEREAD_COOKIE: ${{ secrets.WEREAD_COOKIE }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
+        run: |
+          uv run python src/main.py check-config
+
+      - name: Run sync
+        if: ${{ success() }}
+        env:
+          WEREAD_COOKIE: ${{ secrets.WEREAD_COOKIE }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
+        run: |
+          uv run python src/main.py sync | tee sync.log
+
+      - name: Upload log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-log
+          path: sync.log
+
+
