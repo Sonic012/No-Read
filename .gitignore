@@ -12,3 +12,4 @@
 # Logs (runtime artifacts)
 logs/
 
+config.local.py
