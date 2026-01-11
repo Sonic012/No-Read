@@ -10,7 +10,15 @@
 # 3. 打开开发者工具 (F12)
 # 4. 在 Network 标签页中刷新页面
 # 5. 找到任意一个请求，复制 Cookie 值
-WEREAD_COOKIE = "your_weread_cookie_here"
+# Cookie配置在config.local.py中
+try:
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(__file__))
+    from config_local import WEREAD_COOKIE as _COOKIE
+    WEREAD_COOKIE = _COOKIE
+except (ImportError, ModuleNotFoundError):
+    WEREAD_COOKIE = "your_weread_cookie_here"
 
 # ================================
 # Notion API 配置
