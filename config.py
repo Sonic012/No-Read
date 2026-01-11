@@ -29,7 +29,11 @@ except (ImportError, ModuleNotFoundError):
 # 3. 填写基本信息，获取 Internal Integration Token
 # 4. 在你的 Notion 页面中，点击右上角的 "Share"
 # 5. 添加你刚创建的集成，并给予适当权限
-NOTION_TOKEN = "secret_your_notion_integration_token"
+try:
+    from config_local import NOTION_TOKEN as _TOKEN
+    NOTION_TOKEN = _TOKEN
+except (ImportError, ModuleNotFoundError):
+    NOTION_TOKEN = "secret_your_notion_integration_token"
 
 # Notion 数据库 ID
 # 获取方法：
