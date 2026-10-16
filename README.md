@@ -67,6 +67,7 @@ uv run python main.py sync --full     # 忽略本地元数据缓存，全量刷�
 uv run python main.py sync <book_id>  # 同步指定书籍
 uv run python main.py setup-notion    # 只补齐 Notion 结构（新增 笔记ID 属性 / 阅读记录库 / 粒度选项）
 uv run python main.py status          # 查看同步状态
+uv run python main.py verify          # 全量对账：逐条比对上游与 Notion，确认不丢数据
 uv run python main.py stats monthly   # 阅读统计：weekly / monthly / annually / overall
 uv run python main.py check           # 检查微信读书网关与 Notion 连通性
 uv run python main.py help            # 帮助
@@ -97,6 +98,16 @@ gh secret set NOTION_DATABASE_ID --body "xxxxxxxx"
 CI 上没有 `config.py`，只靠 Secrets；本地保留 `config.py` 也不会影响 CI。
 
 > 首次跑通后建议执行一次全量刷新：`gh workflow run sync.yml -f full=true`
+
+工作流结束前会跑一次 `main.py verify`：按 `书籍ID`/`笔记ID` 逐条比对微信读书与 Notion，
+只要有缺失或多余就判定失败，避免「看起来同步成功、实际少了几条」。
+
+### 不丢数据的几条硬约束
+
+- 笔记/划线按 `笔记ID` 真 upsert，重复同步幂等
+- 只有当某个来源**确认取全**时才允许按「上游已删除」清理；没取全时只写入不清理
+- Notion 429/5xx 自动退避重试，避免限流把一本书的笔记写成一半
+- 书籍 ID / 笔记本索引分页不完整时，跳过该书的清理对账
 
 ## 🗂️ 同步到 Notion 的结构
 

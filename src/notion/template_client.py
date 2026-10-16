@@ -6,13 +6,15 @@
 - 保持 relation（书籍 ↔ 笔记、划线、作者、分类）
 """
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+import httpx
 from aiolimiter import AsyncLimiter
 from notion_client import AsyncClient
-from notion_client.errors import APIResponseError
+from notion_client.errors import APIResponseError, HTTPResponseError
 
 from ..models import BookInfo, BookReview, ReadingNote
 
@@ -106,6 +108,9 @@ def _format_duration(seconds: Optional[int]) -> Optional[str]:
 class NotionTemplateClient:
     """NoRead 多数据库模板的 Notion 客户端。"""
 
+    # 可重试的状态码：限流与临时服务端故障
+    RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
     CHILD_DATABASE_TITLES = {
         "books": "书架",
         "categories": "分类",
@@ -115,19 +120,77 @@ class NotionTemplateClient:
         "reading_records": "阅读记录",
     }
 
-    def __init__(self, token: str, database_id: str, rate_limit: int = 3):
+    def __init__(
+        self,
+        token: str,
+        database_id: str,
+        rate_limit: int = 3,
+        max_retries: int = 5,
+    ):
         self.client = AsyncClient(auth=token)
         self.configured_database_id = database_id
         self.database_id = database_id
         self.parent_page_id: Optional[str] = None
         self.rate_limiter = AsyncLimiter(max_rate=rate_limit, time_period=1)
+        self.max_retries = max(1, max_retries)
+        self.logger = logging.getLogger(__name__)
         self._ready = False
         self.database_ids: Dict[str, str] = {"books": database_id}
         self.database_properties: Dict[str, Dict[str, Any]] = {}
 
     async def _request(self, call, *args, **kwargs):
-        async with self.rate_limiter:
-            return await call(*args, **kwargs)
+        """所有 Notion 请求的唯一出口：本地限流 + 429/5xx 退避重试。
+
+        Notion 对单个集成限流，批量写入时很容易撞上 429。这里必须重试，
+        否则一次 429 会让整本书的笔记只写一半，且外层只会记一条「同步失败」。
+        """
+        last_error: Optional[Exception] = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                async with self.rate_limiter:
+                    return await call(*args, **kwargs)
+            except HTTPResponseError as exc:
+                if getattr(exc, "status", None) not in self.RETRYABLE_STATUS:
+                    raise
+                last_error = exc
+                if attempt >= self.max_retries:
+                    break
+                delay = self._retry_delay(exc, attempt)
+                self.logger.warning(
+                    "Notion 请求被限流/失败（HTTP %s），%.1fs 后重试（第 %s/%s 次）",
+                    exc.status,
+                    delay,
+                    attempt,
+                    self.max_retries,
+                )
+                await asyncio.sleep(delay)
+            except (httpx.TransportError, httpx.TimeoutException) as exc:
+                last_error = exc
+                if attempt >= self.max_retries:
+                    break
+                delay = min(2 ** attempt, 30)
+                self.logger.warning(
+                    "Notion 网络异常：%s，%.1fs 后重试（第 %s/%s 次）",
+                    exc,
+                    delay,
+                    attempt,
+                    self.max_retries,
+                )
+                await asyncio.sleep(delay)
+
+        raise last_error  # type: ignore[misc]
+
+    @staticmethod
+    def _retry_delay(exc: HTTPResponseError, attempt: int) -> float:
+        """优先遵循 Retry-After，其次指数退避。"""
+        headers = getattr(exc, "headers", None) or {}
+        raw = headers.get("retry-after") if hasattr(headers, "get") else None
+        if raw:
+            try:
+                return max(float(raw), 1.0)
+            except (TypeError, ValueError):
+                pass
+        return float(min(2 ** attempt, 30))
 
     # ------------------------------------------------------------------
     # 发现模板结构
@@ -660,6 +723,27 @@ class NotionTemplateClient:
             if book_id:
                 mapping[book_id] = page["id"]
         return mapping
+
+    async def list_note_ids(self, database_key: str) -> Dict[str, str]:
+        """一次性取回某库全部 {笔记ID: page_id}，用于全量对账。"""
+        db_id = self.database_ids.get(database_key)
+        if not db_id:
+            return {}
+
+        mapping: Dict[str, str] = {}
+        cursor = None
+        while True:
+            kwargs: Dict[str, Any] = {"database_id": db_id, "page_size": 100}
+            if cursor:
+                kwargs["start_cursor"] = cursor
+            response = await self._request(self.client.databases.query, **kwargs)
+            for page in response.get("results", []):
+                note_id = _read_rich_text(page.get("properties", {}).get(NOTE_ID_PROPERTY))
+                if note_id:
+                    mapping[note_id] = page["id"]
+            if not response.get("has_more"):
+                return mapping
+            cursor = response.get("next_cursor")
 
     async def list_reading_records(self) -> Dict[str, str]:
         """一次性取回 {日期: page_id}。"""

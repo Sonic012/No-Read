@@ -1,4 +1,4 @@
-.PHONY: install run sync sync-full setup-notion status check test clean help
+.PHONY: install run sync sync-full setup-notion status verify check test clean help
 
 # 默认目标
 help:
@@ -9,6 +9,7 @@ help:
 	@echo "  make sync-full     - 忽略本地缓存，全量刷新一遍"
 	@echo "  make setup-notion  - 只补齐 Notion 模板结构"
 	@echo "  make status        - 查看同步状态"
+	@echo "  make verify        - 全量对账（逐条比对上游与 Notion）"
 	@echo "  make check         - 检查微信读书网关与 Notion 连通性"
 	@echo "  make test          - 运行测试"
 	@echo "  make clean         - 清理缓存"
@@ -34,6 +35,9 @@ setup-notion:
 
 status:
 	uv run python main.py status
+
+verify:
+	uv run python main.py verify
 
 check:
 	uv run python main.py check

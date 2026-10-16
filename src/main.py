@@ -68,6 +68,20 @@ def _weread_api_key() -> Optional[str]:
     return getattr(config, "WEREAD_API_KEY", None) or os.getenv("WEREAD_API_KEY") or None
 
 
+async def verify_all() -> bool:
+    """全量对账：逐条比对微信读书上游与 Notion，确认没有丢数据。"""
+    logger = logging.getLogger(__name__)
+    if not _validate_config():
+        return False
+
+    try:
+        async with SyncService.from_config(config) as sync_service:
+            return await sync_service.verify_full()
+    except Exception as exc:
+        logger.error("❌ 对账失败：%s", exc)
+        return False
+
+
 async def sync_all_books(full: bool = False) -> bool:
     """同步所有书籍、笔记与阅读历史"""
     logger = logging.getLogger(__name__)
@@ -325,6 +339,7 @@ def show_help() -> None:
   uv run python main.py sync <book_id>      同步指定书籍
   uv run python main.py setup-notion        只补齐 Notion 模板结构（新增属性/数据库）
   uv run python main.py status              查看同步状态
+  uv run python main.py verify              全量对账：逐条比对上游与 Notion，确认不丢数据
   uv run python main.py stats [mode]        查看阅读统计
                                             mode: weekly / monthly / annually / overall
   uv run python main.py check               检查微信读书网关与 Notion 连通性
@@ -352,6 +367,8 @@ async def main() -> None:
         success = await setup_notion()
     elif args[0] == "status":
         success = await show_status()
+    elif args[0] == "verify":
+        success = await verify_all()
     elif args[0] == "stats":
         success = await show_stats(args[1] if len(args) > 1 else "monthly")
     elif args[0] == "check":

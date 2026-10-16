@@ -11,13 +11,28 @@
 import asyncio
 import logging
 import os
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import httpx
 from aiolimiter import AsyncLimiter
 
 DEFAULT_ENDPOINT = "https://i.weread.qq.com/api/agent/gateway"
 DEFAULT_SKILL_VERSION = "1.0.5"
+# /review/list/mine 在 count 小于 totalCount 时只返回前 count 条且 hasMore=0，
+# 所以默认要一个足够大的页大小，避免长笔记书籍被静默截断。
+DEFAULT_REVIEW_PAGE_SIZE = 200
+
+
+def _review_key(item: Any) -> Any:
+    """想法/点评的稳定去重键。"""
+    if not isinstance(item, dict):
+        return None
+    review = item.get("review") if isinstance(item.get("review"), dict) else item
+    key = review.get("reviewId") or item.get("reviewId")
+    if key:
+        return key
+    # 兜底：用 创建时间 + 内容 组合，避免整页重复
+    return (review.get("createTime"), (review.get("content") or "")[:80]) or None
 
 
 class WeReadError(Exception):
@@ -196,20 +211,59 @@ class WeReadGateway:
     async def my_reviews_page(self, book_id: str, count: int = 20, synckey: int = 0) -> Dict[str, Any]:
         return await self.call("/review/list/mine", bookid=book_id, count=count, synckey=synckey)
 
-    async def iter_my_reviews(self, book_id: str, count: int = 20) -> AsyncIterator[Dict[str, Any]]:
-        """遍历单本书的个人想法/点评，自动处理 synckey 分页。"""
-        synckey = 0
-        while True:
+    async def my_reviews_all(
+        self, book_id: str, count: int = DEFAULT_REVIEW_PAGE_SIZE
+    ) -> Tuple[List[Dict[str, Any]], Optional[int]]:
+        """取回单本书的全部想法/点评，返回 ``(条目列表, 上游声明的 totalCount)``。
+
+        官方网关的 /review/list/mine 有个坑：``count`` 小于 ``totalCount`` 时
+        它只返回前 ``count`` 条，并且把 ``hasMore`` 置 0、``synckey`` 也翻不到
+        第二页。默认的 20 会让长笔记书籍静默丢数据，所以这里按 ``totalCount``
+        自适应放量，并保留 ``synckey`` 兜底。
+        """
+        page = await self.my_reviews_page(book_id, count=count, synckey=0)
+        reviews = list(page.get("reviews") or [])
+        total = page.get("totalCount") or len(reviews)
+
+        if len(reviews) < total:
+            bigger = await self.my_reviews_page(book_id, count=max(total, count), synckey=0)
+            bigger_reviews = bigger.get("reviews") or []
+            if len(bigger_reviews) > len(reviews):
+                reviews = list(bigger_reviews)
+                total = bigger.get("totalCount") or total
+
+        # synckey 兜底：个别书籍只有走翻页游标才拿得到后续页
+        synckey = page.get("synckey")
+        while synckey and len(reviews) < total:
             page = await self.my_reviews_page(book_id, count=count, synckey=synckey)
-            reviews = page.get("reviews") or []
-            for item in reviews:
-                yield item
-            if not page.get("hasMore"):
-                return
+            more = page.get("reviews") or []
+            if not more:
+                break
+            reviews.extend(more)
             next_key = page.get("synckey")
             if not next_key or next_key == synckey:
-                return
+                break
             synckey = next_key
+
+        deduped: List[Dict[str, Any]] = []
+        seen = set()
+        for item in reviews:
+            key = _review_key(item)
+            if key is not None:
+                if key in seen:
+                    continue
+                seen.add(key)
+            deduped.append(item)
+
+        return deduped, total
+
+    async def iter_my_reviews(
+        self, book_id: str, count: int = DEFAULT_REVIEW_PAGE_SIZE
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """遍历单本书的个人想法/点评（``my_reviews_all`` 的流式包装）。"""
+        reviews, _total = await self.my_reviews_all(book_id, count=count)
+        for item in reviews:
+            yield item
 
     async def readdata(self, mode: str = "monthly", base_time: int = 0) -> Dict[str, Any]:
         """阅读统计。mode: weekly / monthly / annually / overall。"""

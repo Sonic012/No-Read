@@ -49,6 +49,9 @@ jobs:
       - name: 同步数据
         run: uv run python main.py sync ${{ inputs.full && '--full' || '' }}
 
+      - name: 全量对账（逐条比对，缺数据则失败）
+        run: uv run python main.py verify
+
       - name: 查看同步状态
         if: always()
         run: uv run python main.py status || true

@@ -47,12 +47,14 @@ class SyncService:
         notion_database_id: str,
         book_delay: float = 0.5,
         notion_rate_limit: int = 3,
+        notion_max_retries: int = 5,
     ):
         self.provider = provider
         self.notion_client = NotionTemplateClient(
             token=notion_token,
             database_id=notion_database_id,
             rate_limit=notion_rate_limit,
+            max_retries=notion_max_retries,
         )
         self.book_delay = book_delay
         self.logger = logging.getLogger(__name__)
@@ -72,6 +74,7 @@ class SyncService:
             notion_database_id=config.NOTION_DATABASE_ID,
             book_delay=getattr(config, "WEREAD_REQUEST_DELAY", 0.5),
             notion_rate_limit=getattr(config, "NOTION_RATE_LIMIT", 3),
+            notion_max_retries=getattr(config, "NOTION_MAX_RETRIES", 5),
         )
 
     async def __aenter__(self) -> "SyncService":
@@ -250,21 +253,26 @@ class SyncService:
             highlights_ok = notes_result.highlights_ok
             reviews_ok = notes_result.reviews_ok
 
-        if highlights_ok:
-            counters = _merge_counters(
-                counters,
-                await self._reconcile_database("highlights", book_page_id, highlights),
-            )
-        if reviews_ok:
-            counters = _merge_counters(
-                counters,
-                await self._reconcile_database("notes", book_page_id, thoughts),
-            )
+        # 取全了才允许清理；没取全时只写入已取到的部分，绝不动 Notion 里已有的记录
+        counters = _merge_counters(
+            counters,
+            await self._reconcile_database(
+                "highlights", book_page_id, highlights, prune=highlights_ok
+            ),
+        )
+        counters = _merge_counters(
+            counters,
+            await self._reconcile_database("notes", book_page_id, thoughts, prune=reviews_ok),
+        )
 
         return counters
 
     async def _reconcile_database(
-        self, database_key: str, book_page_id: str, notes: List[ReadingNote]
+        self,
+        database_key: str,
+        book_page_id: str,
+        notes: List[ReadingNote],
+        prune: bool = True,
     ) -> Dict[str, int]:
         counters = {"created": 0, "updated": 0, "adopted": 0, "unchanged": 0, "deleted": 0, "skipped": 0}
 
@@ -279,15 +287,86 @@ class SyncService:
             seen.add(note.note_id)
             counters[action if action in counters else "unchanged"] += 1
 
-        stale = [
-            entry["page_id"]
-            for note_id, entry in existing.items()
-            if not note_id.startswith("__legacy__") and note_id not in seen
-        ]
+        stale = []
+        if prune:
+            stale = [
+                entry["page_id"]
+                for note_id, entry in existing.items()
+                if not note_id.startswith("__legacy__") and note_id not in seen
+            ]
         if stale:
             counters["deleted"] = await self.notion_client.archive_pages(stale)
 
         return counters
+
+    # ------------------------------------------------------------------
+    # 全量对账
+    # ------------------------------------------------------------------
+    async def verify_full(self) -> bool:
+        """逐 ID 比对「上游应有」与「Notion 实有」，确认没有丢数据。
+
+        返回 True 表示书架、笔记、划线三个集合都完全一致。
+        """
+        shelf = await self.provider.list_shelf()
+        notebooks = await self.provider.notebook_index()
+        shelf_ids = {book.book_id for book in shelf}
+        # 有笔记但已不在书架的书（下架/仅收藏文章）也必须保留，否则笔记会成孤儿
+        notebook_only = set(notebooks) - shelf_ids
+        expected_books = shelf_ids | notebook_only
+
+        expected_notes: Dict[str, str] = {}
+        expected_highlights: Dict[str, str] = {}
+        incomplete: List[str] = []
+
+        for book_id in notebooks:
+            result = await self.provider.load_notes(book_id)
+            review_ids = {review.review_id for review in result.reviews}
+            for review in result.reviews:
+                expected_notes[review.review_id] = book_id
+            for note in result.notes:
+                if note.note_type == "bookmark":
+                    expected_highlights[note.note_id] = book_id
+                elif note.note_type != "review" or note.note_id not in review_ids:
+                    expected_notes[note.note_id] = book_id
+            if not (result.highlights_ok and result.reviews_ok):
+                incomplete.append(book_id)
+
+        await self.notion_client._ensure_ready()
+        actual_books = set(await self.notion_client.list_book_page_ids())
+        actual_notes = set(await self.notion_client.list_note_ids("notes"))
+        actual_highlights = set(await self.notion_client.list_note_ids("highlights"))
+
+        ok = True
+        print("\n" + "=" * 60)
+        print("全量对账（按 书籍ID / 笔记ID 逐条比对）")
+        print("=" * 60)
+
+        ok = self._report_set("书架", expected_books, actual_books) and ok
+        if notebook_only:
+            print(f"           （其中 {len(notebook_only)} 本有笔记但已不在书架，仍保留：{sorted(notebook_only)}）")
+        ok = self._report_set("笔记", set(expected_notes), actual_notes) and ok
+        ok = self._report_set("划线", set(expected_highlights), actual_highlights) and ok
+
+        records = await self.notion_client.list_reading_records()
+        print(f"  阅读记录  Notion {len(records):>5} 条")
+
+        if incomplete:
+            print(f"\n⚠️  以下书籍本次抓取未确认成功，结果仅供参考：{', '.join(incomplete)}")
+        print("=" * 60)
+        print("✅ 对账通过：Notion 与微信读书逐条一致" if ok else "❌ 对账不通过：存在缺失或多余记录")
+        return ok
+
+    @staticmethod
+    def _report_set(label: str, expected: set, actual: set) -> bool:
+        missing = expected - actual
+        extra = actual - expected
+        status = "✅" if not missing and not extra else "❌"
+        print(f"  {label:<8} 上游 {len(expected):>5}   Notion {len(actual):>5}   {status}")
+        if missing:
+            print(f"           缺失 {len(missing)} 条：{sorted(missing)[:5]} ...")
+        if extra:
+            print(f"           多余 {len(extra)} 条：{sorted(extra)[:5]} ...")
+        return not missing and not extra
 
     # ------------------------------------------------------------------
     # 阅读记录（历史时长）

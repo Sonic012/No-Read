@@ -26,6 +26,7 @@ DEFAULTS: Dict[str, Any] = {
     "NOTION_PARENT_PAGE_ID": "",
     "NOTION_RATE_LIMIT": 3,
     "NOTION_REQUEST_TIMEOUT": 60,
+    "NOTION_MAX_RETRIES": 5,
     # 同步范围（默认全量对账，不做过滤）
     "SYNC_FINISHED_BOOKS": True,
     "SYNC_UNFINISHED_BOOKS": True,

@@ -30,6 +30,8 @@ class NotesResult:
 
     notes: List[ReadingNote] = field(default_factory=list)
     reviews: List[BookReview] = field(default_factory=list)
+    # 完整性标记：False 表示这次没取全，允许写入已取到的部分，但禁止按
+    # 「上游已删除」清理，避免半截数据把 Notion 里的正确记录删掉。
     highlights_ok: bool = True
     reviews_ok: bool = True
 
@@ -266,7 +268,17 @@ class OfficialWeReadProvider:
             )
 
         try:
-            async for item in self.gateway.iter_my_reviews(book_id):
+            items, total = await self.gateway.my_reviews_all(book_id)
+            if total is not None and len(items) < total:
+                self.logger.warning(
+                    "书籍 %s 的想法/点评未取全：上游声明 %s 条，实取 %s 条；"
+                    "本次只写入不清理（防误删），下次同步会重试",
+                    book_id,
+                    total,
+                    len(items),
+                )
+                result.reviews_ok = False
+            for item in items:
                 review = item.get("review") if isinstance(item.get("review"), dict) else item
                 content = review.get("content")
                 if not content:

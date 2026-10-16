@@ -94,6 +94,7 @@ def test_reconcile_never_deletes_when_fetch_failed():
 
     assert client.archived == [], "抓取失败时不得归档任何划线"
     assert counters["deleted"] == 0
+    assert "rv_1" in client.upserts, "没取全时仍要写入已取到的部分，保证下次继续收敛"
 
 
 def test_reconcile_skips_empty_content_without_deleting():

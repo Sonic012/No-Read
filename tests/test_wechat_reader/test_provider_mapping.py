@@ -121,6 +121,9 @@ class FakeGateway:
     async def bookmark_list(self, book_id: str):
         return self.bookmarks
 
+    async def my_reviews_all(self, book_id: str):
+        return list(self.reviews), len(self.reviews)
+
     async def iter_my_reviews(self, book_id: str):
         for item in self.reviews:
             yield item
