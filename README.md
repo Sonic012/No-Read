@@ -77,7 +77,7 @@ uv run python main.py help            # 帮助
 
 本项目默认**不本地部署**，由 GitHub Actions 每天定时拉取并同步；本地只用于功能开发和联调。
 
-- 工作流：`.github/workflows/sync.yml`，每天 `09:07 (Asia/Shanghai)` 触发，也支持手动 `Run workflow`（可勾选全量刷新）
+- 工作流：`.github/workflows/sync.yml`，每天 `05:00 (Asia/Shanghai)` 触发，也支持手动 `Run workflow`（可勾选全量刷新）
 - 配置全部来自 Repository Secrets，仓库里不含任何密钥：
 
 | Secret | 说明 |
