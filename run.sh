@@ -2,6 +2,8 @@
 
 # 项目启动脚本
 
+set -e
+
 echo "🚀 启动 No-Read 项目..."
 
 # 检查 uv 是否安装
@@ -15,9 +17,8 @@ fi
 if [ ! -d ".venv" ]; then
     echo "🔧 首次运行，正在安装依赖..."
     uv sync
-    uv run playwright install
 fi
 
-# 启动项目
+# 启动项目（参数透传给 main.py，默认 help）
 echo "▶️  启动项目..."
-uv run python src/main.py 
+uv run python main.py "${@:-help}"

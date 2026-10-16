@@ -1,0 +1,20 @@
+# 本地配置（含 Notion Token / 微信读书 API Key，绝不入库）
+config.py
+
+# 虚拟环境与依赖缓存
+.venv/
+uv.lock.bak
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 运行产物
+logs/
+*.log
+
+# 系统与编辑器
+.DS_Store
+.idea/
+.vscode/

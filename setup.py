@@ -50,22 +50,20 @@ def interactive_config():
     with open(config_file, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    # 获取微信读书 Cookie
-    print("\n📚 微信读书配置")
+    # 获取微信读书 API Key
+    print("\n📚 微信读书配置（官方 Agent API）")
     print("获取方法：")
-    print("1. 打开浏览器，访问 https://weread.qq.com/")
-    print("2. 登录你的微信读书账号")
-    print("3. 打开开发者工具 (F12)")
-    print("4. 在 Network 标签页中刷新页面")
-    print("5. 找到任意一个请求，复制 Cookie 值")
-    
-    weread_cookie = input("\n请输入微信读书 Cookie (留空跳过): ").strip()
-    if weread_cookie:
+    print("1. 打开 https://weread.qq.com/r/weread-skills")
+    print("2. 用微信扫码绑定你的微信读书账号")
+    print("3. 复制生成的 API Key（形如 wrk-xxxxxxxx）")
+
+    api_key = input("\n请输入微信读书 API Key (留空跳过): ").strip()
+    if api_key:
         content = content.replace(
-            'WEREAD_COOKIE = "your_weread_cookie_here"',
-            f'WEREAD_COOKIE = "{weread_cookie}"'
+            'WEREAD_API_KEY = ""',
+            f'WEREAD_API_KEY = "{api_key}"'
         )
-        print("✅ 微信读书 Cookie 已设置")
+        print("✅ 微信读书 API Key 已设置")
     
     # 获取 Notion Token
     print("\n📝 Notion API 配置")

@@ -9,3 +9,10 @@ dependencies = [
     "httpx>=0.28.0",
     "notion-client>=2.4.0",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

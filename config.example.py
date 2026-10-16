@@ -1,16 +1,25 @@
 # 项目配置示例
 # 复制此文件为 config.py 并填入实际值
+#
+# 配置读取顺序：环境变量 > config.py > 内置默认值（见 src/settings.py）
+# GitHub Actions 上不需要本文件，配置放在 Repository Secrets 里即可；
+# 因此任何一项都可以不改文件，直接用同名环境变量覆盖，例如
+#   export NOTION_TOKEN=ntn_xxx
 
 # ================================
-# 微信读书配置
+# 微信读书配置（官方 Agent API）
 # ================================
-# 获取方法：
-# 1. 打开浏览器，访问 https://weread.qq.com/
-# 2. 登录你的微信读书账号
-# 3. 打开开发者工具 (F12)
-# 4. 在 Network 标签页中刷新页面
-# 5. 找到任意一个请求，复制 Cookie 值
-WEREAD_COOKIE = "your_weread_cookie_here"
+# 微信读书官方已提供 Agent Skill + API Gateway，不再需要手工复制 Cookie。
+#
+# 获取 API Key：
+# 1. 打开 https://weread.qq.com/r/weread-skills （官方入口）
+# 2. 用微信扫码绑定你的微信读书账号
+# 3. 复制生成的 API Key（形如 wrk-xxxxxxxx）
+WEREAD_API_KEY = "wrk-你的APIKey"
+
+# 官方会随接口调整更新 Skill 版本；回包出现 upgrade_info 时程序会明确提示。
+# 默认取官方 SKILL.md 中的 version 字段，一般无需修改。
+WEREAD_SKILL_VERSION = "1.0.5"
 
 # ================================
 # Notion API 配置
@@ -21,43 +30,38 @@ WEREAD_COOKIE = "your_weread_cookie_here"
 # 3. 填写基本信息，获取 Internal Integration Token
 # 4. 在你的 Notion 页面中，点击右上角的 "Share"
 # 5. 添加你刚创建的集成，并给予适当权限
-NOTION_TOKEN = "secret_your_notion_integration_token"
+NOTION_TOKEN = "ntn_你的Notion集成Token"
 
 # Notion 数据库 ID
-# 获取方法：
-# 1. 在 Notion 中创建一个数据库页面
-# 2. 复制页面链接，格式如：https://www.notion.so/your-workspace/database-name-32位字符串?v=view-id
-# 3. 32位字符串就是数据库 ID
-NOTION_DATABASE_ID = "your_notion_database_id"
-
-# 如果没有数据库，可以设置父页面 ID，程序会自动创建数据库
-# NOTION_PARENT_PAGE_ID = "your_parent_page_id"
+# 可以是「书架」数据库 ID，也可以是包含 书架/分类/作者/笔记/划线
+# 这 5 个子数据库的父页面 ID（程序会自动发现子数据库）。
+NOTION_DATABASE_ID = "你的数据库或父页面ID"
 
 # ================================
 # 同步配置
 # ================================
-# 同步选项
-SYNC_ALL_BOOKS = True          # 是否同步所有书籍（包括没有笔记的）
 SYNC_FINISHED_BOOKS = True     # 是否同步已读完的书籍
-SYNC_UNFINISHED_BOOKS = True   # 是否同步未读完的书籍
+SYNC_UNFINISHED_BOOKS = True   # 是否同步未读完的书籍（含仅加入书架的）
 SYNC_BOOK_COVERS = True        # 是否同步书籍封面
-SYNC_BOOK_REVIEWS = True       # 是否同步书评
-SYNC_READING_NOTES = True      # 是否同步读书笔记
-
-# 批量同步设置
-BATCH_SIZE = 5                 # 每批次同步的书籍数量
-BATCH_DELAY = 2                # 批次之间的延迟（秒）
+SYNC_BOOK_NOTES = True         # 是否同步划线/想法笔记
 
 # ================================
 # API 限制配置
 # ================================
-# 微信读书 API 限制
-WEREAD_RATE_LIMIT = 5          # 每60秒最多请求次数
-WEREAD_REQUEST_DELAY = 1       # 请求之间的延迟（秒）
+# 微信读书 Agent Gateway 限流（每 60 秒最多请求次数）
+WEREAD_RATE_LIMIT = 30
+# 每本书之间的额外延迟（秒），用于进一步降低触发限流的概率
+WEREAD_REQUEST_DELAY = 0.5
 
 # Notion API 限制
 NOTION_RATE_LIMIT = 3          # 每秒最多请求次数
-NOTION_REQUEST_TIMEOUT = 60    # 请求超时时间（秒）
+
+# ================================
+# 元数据缓存
+# ================================
+# 书籍详情/进度变化很慢，缓存后每日同步只需拉取新增或有变化的书籍。
+BOOK_CACHE_FILE = "logs/book_metadata.json"
+BOOK_CACHE_TTL = 604800        # 缓存有效期（秒），默认 7 天；设为 -1 表示永不过期
 
 # ================================
 # 日志配置
@@ -69,17 +73,6 @@ LOG_MAX_SIZE = 10 * 1024 * 1024  # 日志文件最大大小（字节）
 LOG_BACKUP_COUNT = 5           # 保留的日志文件数量
 
 # ================================
-# 高级配置
-# ================================
 # 数据过滤
-MIN_NOTE_LENGTH = 10           # 最小笔记长度（字符）
-EXCLUDE_PRIVATE_NOTES = False  # 是否排除私有笔记
-EXCLUDE_EMPTY_BOOKS = True     # 是否排除没有内容的书籍
-
-# 重试配置
-MAX_RETRIES = 3                # 最大重试次数
-RETRY_DELAY = 2                # 重试延迟（秒）
-
-# 缓存配置
-ENABLE_CACHE = True            # 是否启用缓存
-CACHE_EXPIRE_TIME = 3600       # 缓存过期时间（秒） 
+# ================================
+EXCLUDE_PRIVATE_NOTES = False  # 是否排除私有划线/想法

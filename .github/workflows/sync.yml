@@ -1,0 +1,63 @@
+name: WeRead → Notion 同步
+
+on:
+  schedule:
+    # 每天 09:07（Asia/Shanghai）；UTC 01:07，避开整点排队高峰
+    - cron: "7 1 * * *"
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "忽略本地缓存，全量刷新一遍"
+        type: boolean
+        default: false
+
+concurrency:
+  group: weread-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: 同步历史数据
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TZ: Asia/Shanghai
+      WEREAD_API_KEY: ${{ secrets.WEREAD_API_KEY }}
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: 安装依赖
+        run: uv sync --frozen
+
+      - name: 连通性检查
+        run: uv run python main.py check
+
+      - name: 补齐 Notion 结构
+        run: uv run python main.py setup-notion
+
+      - name: 同步数据
+        run: uv run python main.py sync ${{ inputs.full && '--full' || '' }}
+
+      - name: 查看同步状态
+        if: always()
+        run: uv run python main.py status || true
+
+      - name: 上传运行日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-log
+          path: logs/
+          if-no-files-found: ignore
+          retention-days: 7
