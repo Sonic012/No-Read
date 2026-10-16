@@ -676,11 +676,29 @@ class NotionTemplateClient:
     # 阅读记录
     # ------------------------------------------------------------------
     async def upsert_reading_record(
-        self, day: str, seconds: int, granularity: str = "日", page_id: Optional[str] = None
+        self,
+        day: str,
+        seconds: int,
+        granularity: str = "日",
+        page_id: Optional[str] = None,
+        current: Optional[Dict[str, Any]] = None,
     ) -> str:
+        """写入一条阅读时长记录。
+
+        ``current`` 是 Notion 里的现值（``list_reading_record_values`` 的条目），
+        值完全一致时直接跳过，保证重复同步不会产生无谓写请求。
+        """
         db_id = self.database_ids.get("reading_records")
         if not db_id:
             return "skipped"
+
+        if current and current.get("seconds") == seconds and (
+            self._prop_type("reading_records", "粒度") != "select"
+            or current.get("granularity") == granularity
+        ):
+            return "skipped"
+        if current:
+            page_id = current.get("page_id") or page_id
 
         properties: Dict[str, Any] = {
             "日期": self._title(day),
@@ -758,11 +776,16 @@ class NotionTemplateClient:
 
     async def list_reading_records(self) -> Dict[str, str]:
         """一次性取回 {日期: page_id}。"""
+        values = await self.list_reading_record_values()
+        return {day: item["page_id"] for day, item in values.items()}
+
+    async def list_reading_record_values(self) -> Dict[str, Dict[str, Any]]:
+        """一次性取回 {日期: {page_id, seconds, granularity}}，用于逐条对账。"""
         db_id = self.database_ids.get("reading_records")
         if not db_id:
             return {}
 
-        mapping: Dict[str, str] = {}
+        mapping: Dict[str, Dict[str, Any]] = {}
         cursor = None
         while True:
             kwargs: Dict[str, Any] = {"database_id": db_id, "page_size": 100}
@@ -770,9 +793,15 @@ class NotionTemplateClient:
                 kwargs["start_cursor"] = cursor
             response = await self._request(self.client.databases.query, **kwargs)
             for page in response.get("results", []):
-                title = _read_title(page.get("properties", {}).get("日期"))
-                if title:
-                    mapping[title] = page["id"]
+                props = page.get("properties", {})
+                title = _read_title(props.get("日期"))
+                if not title:
+                    continue
+                mapping[title] = {
+                    "page_id": page["id"],
+                    "seconds": _read_number(props.get("阅读时长")),
+                    "granularity": _read_select(props.get("粒度")),
+                }
             if not response.get("has_more"):
                 return mapping
             cursor = response.get("next_cursor")
@@ -802,3 +831,16 @@ def _read_title(prop: Optional[Dict[str, Any]]) -> str:
     if not prop:
         return ""
     return "".join(item.get("plain_text", "") for item in prop.get("title", []))
+
+
+def _read_number(prop: Optional[Dict[str, Any]]) -> Optional[float]:
+    if not prop:
+        return None
+    return prop.get("number")
+
+
+def _read_select(prop: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not prop:
+        return None
+    select = prop.get("select") or {}
+    return select.get("name")

@@ -347,8 +347,33 @@ class SyncService:
         ok = self._report_set("笔记", set(expected_notes), actual_notes) and ok
         ok = self._report_set("划线", set(expected_highlights), actual_highlights) and ok
 
-        records = await self.notion_client.list_reading_records()
-        print(f"  阅读记录  Notion {len(records):>5} 条")
+        expected_history = await self.provider.reading_history()
+        records = await self.notion_client.list_reading_record_values()
+        missing_records = {
+            day: seconds
+            for day, seconds in expected_history.items()
+            if day not in records
+        }
+        drifted = {
+            day: (seconds, records[day]["seconds"])
+            for day, seconds in expected_history.items()
+            if day in records and records[day]["seconds"] != seconds
+        }
+        extra_records = set(records) - set(expected_history)
+        record_ok = not (missing_records or drifted or extra_records)
+        mark = "✅" if record_ok else "❌"
+        print(
+            f"  阅读记录  上游 {len(expected_history):>5}   Notion {len(records):>5}   {mark}"
+        )
+        if missing_records:
+            sample = sorted(missing_records)[:5]
+            print(f"           缺失 {len(missing_records)} 条：{sample} ...")
+        if drifted:
+            sample = sorted(drifted)[:5]
+            print(f"           时长不一致 {len(drifted)} 条：{[(d, drifted[d]) for d in sample]} ...")
+        if extra_records:
+            print(f"           多余 {len(extra_records)} 条：{sorted(extra_records)[:5]} ...")
+        ok = record_ok and ok
 
         if incomplete:
             print(f"\n⚠️  以下书籍本次抓取未确认成功，结果仅供参考：{', '.join(incomplete)}")
@@ -384,14 +409,24 @@ class SyncService:
             return counters
 
         self.logger.info("📈 阅读历史共 %s 条记录，写入「阅读记录」", len(history))
-        existing = await self.notion_client.list_reading_records()
+        existing = await self.notion_client.list_reading_record_values()
 
         for day, seconds in history.items():
             granularity = {4: "年", 7: "月", 10: "日"}.get(len(day), "日")
             action = await self.notion_client.upsert_reading_record(
-                day, seconds, granularity, page_id=existing.get(day)
+                day,
+                seconds,
+                granularity,
+                page_id=existing.get(day, {}).get("page_id"),
+                current=existing.get(day),
             )
             counters[action if action in counters else "skipped"] += 1
+        self.logger.info(
+            "📈 阅读记录：新增 %s / 更新 %s / 未变 %s",
+            counters["created"],
+            counters["updated"],
+            counters["skipped"],
+        )
         return counters
 
     # ------------------------------------------------------------------

@@ -22,7 +22,7 @@ jobs:
   sync:
     name: 同步历史数据
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       TZ: Asia/Shanghai
       WEREAD_API_KEY: ${{ secrets.WEREAD_API_KEY }}

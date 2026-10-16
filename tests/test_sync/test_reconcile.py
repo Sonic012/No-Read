@@ -190,10 +190,12 @@ def test_sync_reading_history_maps_granularity_by_key_length():
     recorded = []
 
     class Client(StubNotionClient):
-        async def list_reading_records(self):
+        async def list_reading_record_values(self):
             return {}
 
-        async def upsert_reading_record(self, day, seconds, granularity="日", page_id=None):
+        async def upsert_reading_record(
+            self, day, seconds, granularity="日", page_id=None, current=None
+        ):
             recorded.append((day, seconds, granularity))
             return "created"
 
@@ -207,3 +209,31 @@ def test_sync_reading_history_maps_granularity_by_key_length():
         ("2024-06-02", 600, "日"),
     ]
     assert counters["created"] == 3
+
+
+def test_reading_history_skips_unchanged_records():
+    """重复同步时值没变就不能再写，保证幂等。"""
+
+    class Provider:
+        async def reading_history(self):
+            return {"2024-06-02": 600}
+
+    calls = []
+
+    class Client(StubNotionClient):
+        async def list_reading_record_values(self):
+            return {"2024-06-02": {"page_id": "p1", "seconds": 600, "granularity": "日"}}
+
+        async def upsert_reading_record(
+            self, day, seconds, granularity="日", page_id=None, current=None
+        ):
+            calls.append((day, page_id, current))
+            return "skipped"
+
+    service = _service(Client({}))
+    service.provider = Provider()
+    counters = asyncio.run(service.sync_reading_history())
+
+    assert counters == {"created": 0, "updated": 0, "skipped": 1}
+    assert calls == [("2024-06-02", "p1", {"page_id": "p1", "seconds": 600, "granularity": "日"})]
+

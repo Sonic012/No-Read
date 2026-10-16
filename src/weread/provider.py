@@ -326,11 +326,15 @@ class OfficialWeReadProvider:
         return await self.gateway.readdata(mode=mode, base_time=base_time)
 
     async def reading_history(self) -> Dict[str, int]:
-        """按年回溯全部阅读历史，返回 {日期: 秒数}。
+        """回溯全部阅读历史，返回 ``{日期: 秒数}``，含 年 / 月 / 日 三个粒度。
 
-        优先使用年度接口返回的 ``dailyReadTimes``（日粒度）；拿不到日明细时
-        退化为 ``readTimes`` 的月粒度，键形如 ``YYYY-MM``；另外用 ``overall``
-        的 ``readTimes``（按年分桶）补一份 ``YYYY`` 的年粒度数据。
+        官方 ``/readdata/detail`` 的口径：
+        - ``overall`` 的 ``readTimes`` 按年分桶 → 年粒度 ``YYYY``
+        - ``annually`` 的 ``readTimes`` 按月分桶 → 月粒度 ``YYYY-MM``
+        - ``monthly`` 的 ``readTimes`` 按天分桶 → 日粒度 ``YYYY-MM-DD``
+          （``dailyReadTimes`` 是文档里提到但实际不返回的字段，不能依赖）
+
+        因此日粒度只能逐月取回；只查「年度明细里读过」的月份，避免空跑。
         """
         buckets: Dict[str, int] = {}
 
@@ -350,29 +354,44 @@ class OfficialWeReadProvider:
         if start_year is None:
             return {key: value for key, value in sorted(buckets.items()) if value > 0}
 
+        months_with_data: List[Tuple[int, int]] = []
+
         for year in range(start_year, current_year + 1):
-            base_time = int(datetime(year, 1, 1).timestamp())
-            try:
-                data = await self.gateway.readdata(mode="annually", base_time=base_time)
-            except Exception as exc:
-                self.logger.warning("获取 %s 年阅读统计失败：%s", year, exc)
-                continue
+            data = await self._readdata_or_empty(mode="annually", base_time=_year_start(year))
 
             daily = data.get("dailyReadTimes") or {}
-            monthly = data.get("readTimes") or {}
+            for stamp, seconds in (daily or {}).items():
+                key = _stamp_to_key(stamp, "%Y-%m-%d")
+                if key:
+                    buckets[key] = buckets.get(key, 0) + int(seconds or 0)
 
-            if daily:
-                for stamp, seconds in daily.items():
-                    key = _stamp_to_key(stamp, "%Y-%m-%d")
-                    if key:
-                        buckets[key] = buckets.get(key, 0) + int(seconds or 0)
-            else:
-                for stamp, seconds in monthly.items():
-                    key = _stamp_to_key(stamp, "%Y-%m")
-                    if key:
-                        buckets[key] = buckets.get(key, 0) + int(seconds or 0)
+            for stamp, seconds in (data.get("readTimes") or {}).items():
+                key = _stamp_to_key(stamp, "%Y-%m")
+                if not key:
+                    continue
+                buckets[key] = buckets.get(key, 0) + int(seconds or 0)
+                # 只在「该月有实际时长」时再拉一次日明细，省掉大量空请求
+                if int(seconds or 0) > 0:
+                    parsed = _parse_key_start(key)
+                    if parsed is not None:
+                        months_with_data.append(parsed)
+
+        for year, month in sorted(set(months_with_data)):
+            data = await self._readdata_or_empty(mode="monthly", base_time=_month_start(year, month))
+            for stamp, seconds in (data.get("readTimes") or {}).items():
+                key = _stamp_to_key(stamp, "%Y-%m-%d")
+                if key:
+                    buckets[key] = buckets.get(key, 0) + int(seconds or 0)
 
         return {key: value for key, value in sorted(buckets.items()) if value > 0}
+
+    async def _readdata_or_empty(self, mode: str, base_time: int = 0) -> Dict[str, Any]:
+        """取阅读统计，失败时只告警不中断整轮同步。"""
+        try:
+            return await self.gateway.readdata(mode=mode, base_time=base_time)
+        except Exception as exc:
+            self.logger.warning("获取阅读统计失败（mode=%s）：%s", mode, exc)
+            return {}
 
     # ------------------------------------------------------------------
     # 归一化
@@ -453,6 +472,22 @@ class OfficialWeReadProvider:
             highlight_count=base.highlight_count,
             bookmark_count=base.bookmark_count,
         )
+
+
+def _year_start(year: int) -> int:
+    return int(datetime(year, 1, 1).timestamp())
+
+
+def _month_start(year: int, month: int) -> int:
+    return int(datetime(year, month, 1).timestamp())
+
+
+def _parse_key_start(key: str) -> Optional[Tuple[int, int]]:
+    """把 ``YYYY-MM`` 解析成 ``(年, 月)``。"""
+    parts = key.split("-")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        return None
+    return int(parts[0]), int(parts[1])
 
 
 def _first_reading_year(overall: Dict[str, Any]) -> Optional[int]:

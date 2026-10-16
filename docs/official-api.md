@@ -65,6 +65,11 @@
 `mode` 取 `weekly` / `monthly` / `annually` / `overall`，`baseTime` 可回溯历史周期。
 
 - `totalReadTime` / `readTimes` / `dailyReadTimes`：阅读与收听时长，**单位统一为秒**
+- **实测口径**（与文档描述有出入，以实测为准）：`readTimes` 的分桶精度随 `mode` 变化
+  - `overall` → 按**年**分桶，键为 `YYYY` 时间戳
+  - `annually` → 按**月**分桶，键为 `YYYY-MM` 时间戳
+  - `monthly` → 按**天**分桶，键为 `YYYY-MM-DD` 时间戳
+- `dailyReadTimes` 文档里说有，实测各年份均返回空，**不可依赖**
 - `readDays`：有效阅读天数（单日满 1 分钟）
 - `dayAverageReadTime`：自然日日均（不是阅读日日均）
 - `readLongest[]`：读得最多的书/有声内容排行（含 `readTime`）
@@ -140,10 +145,27 @@
 | 年 / 月 | number | 便于分组与汇总 |
 | 粒度 | select | `日` / `月` / `年`，标明该行是日明细、月汇总还是年汇总 |
 
-历史抓取方式：先调 `overall` 找到有记录的最早年份，再逐年调 `annually`，
-优先使用日粒度的 `dailyReadTimes`，拿不到时退化为月粒度 `readTimes`；
-另外用 `overall` 的 `readTimes`（按年分桶）补一份年粒度汇总。
-日/月/年三类行互不重复计数（键格式不同）。
+历史抓取方式（`OfficialWeReadProvider.reading_history`）：
+
+1. `overall` → 年粒度（`YYYY`），并据此推断最早阅读年份
+2. 从最早年份到今年逐年调 `annually` → 月粒度（`YYYY-MM`）
+3. 只对「月时长 > 0」的月份调 `monthly` → 日粒度（`YYYY-MM-DD`），避免空跑请求
+
+单次失败只告警不中断（`_readdata_or_empty`），一次取不全不会污染已有数据。
+日/月/年三类行键格式不同，互不重复计数。
+
+同步是幂等的：`阅读时长` 与 `粒度` 都没变时直接跳过，不产生写请求。
+
+「阅读记录」库里预置三个图表视图，可直接看趋势：
+
+| 视图 | 类型 | 过滤 |
+|---|---|---|
+| 年度阅读时长 | 柱状图 | `粒度 = 年` |
+| 月度阅读时长 | 折线图 | `粒度 = 月` |
+| 每日阅读时长 | 折线图 | `粒度 = 日` |
+
+三个视图的 x 轴都是 `日期`，按 `阅读时长` 求和。`日期` 是等宽的 `YYYY` / `YYYY-MM` /
+`YYYY-MM-DD`，字典序即时间序，所以升序排列就是时间正序。
 
 ## 尚未同步、可后续补充
 

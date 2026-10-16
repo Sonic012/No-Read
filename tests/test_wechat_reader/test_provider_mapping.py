@@ -8,7 +8,11 @@ import pytest
 
 from src.models import BookInfo
 from src.notion.template_client import NotionTemplateClient, _format_duration
-from src.weread.provider import NotesResult, OfficialWeReadProvider
+from src.weread.provider import (
+    NotesResult,
+    OfficialWeReadProvider,
+    _parse_key_start,
+)
 
 
 class FakeGateway:
@@ -288,3 +292,49 @@ def test_reading_history_covers_year_month_and_day_granularity():
     assert history["2024"] == 7200
     assert history["2023-06-02"] == 600, "有日明细时用日粒度"
     assert history["2024-06"] == 7200, "无日明细时退化为月粒度"
+
+def test_reading_history_falls_back_and_survives_failures():
+    """monthly 明细失败不能中断整轮；月明细能取到就必须落到日粒度。"""
+    day_stamp = int(datetime(2024, 6, 3, 12).timestamp())
+    month_stamp = int(datetime(2024, 6, 1, 12).timestamp())
+    year_2024 = int(datetime(2024, 6, 1, 12).timestamp())
+
+    class StatsGateway(FakeGateway):
+        async def readdata(self, mode: str = "monthly", base_time: int = 0):
+            if mode == "overall":
+                return {"totalReadTime": 7200, "readTimes": {year_2024: 7200}}
+            if mode == "annually":
+                if base_time == int(datetime(2024, 1, 1).timestamp()):
+                    return {"readTimes": {month_stamp: 7200}}
+                return {}
+            if mode == "monthly":
+                if base_time == int(datetime(2024, 6, 1).timestamp()):
+                    return {"readTimes": {day_stamp: 7200}}
+                return {}
+            raise RuntimeError("接口异常")
+
+    provider = _provider()
+    provider.gateway = StatsGateway()
+    history = asyncio.run(provider.reading_history())
+
+    assert history["2024"] == 7200
+    assert history["2024-06"] == 7200
+    assert history["2024-06-03"] == 7200, "月明细可用时必须产出日粒度"
+
+
+def test_reading_history_tolerates_readdata_errors():
+    class BoomGateway(FakeGateway):
+        async def readdata(self, mode: str = "monthly", base_time: int = 0):
+            raise RuntimeError("500 Internal Server Error")
+
+    provider = _provider()
+    provider.gateway = BoomGateway()
+    assert asyncio.run(provider.reading_history()) == {}
+
+
+def test_parse_key_start_rejects_non_month_keys():
+    assert _parse_key_start("2024-06") == (2024, 6)
+    assert _parse_key_start("2024") is None
+    assert _parse_key_start("2024-06-03") is None
+    assert _parse_key_start("abcd-06") is None
+
