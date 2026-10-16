@@ -43,6 +43,17 @@ def _clip_text(value: Optional[str], limit: int = TITLE_LIMIT) -> str:
     return value if len(value) <= limit else value[: limit - 1] + "…"
 
 
+# Notion 标题属性会吞掉结尾的换行与行分隔符（真实行为：\u2028 被丢弃），
+# 写入和比对必须用同一份归一文本，否则以这些字符结尾的划线每次同步
+# 都会被判成「已变更」，反复重写。
+_TITLE_TRAILING = "\r\n\u2028\u2029\t "
+
+
+def _title_text(value: Optional[str], limit: int = TITLE_LIMIT) -> str:
+    """标题属性用的正文（去掉 Notion 不保留的结尾空白）。"""
+    return _clip_text(value, limit).rstrip(_TITLE_TRAILING)
+
+
 def _body_chunks(value: Optional[str], limit: int = BODY_CHUNK_LIMIT) -> List[str]:
     """把超长内容切成可写入页面正文的片段（Notion 单个文本块上限 2000 字）。"""
     if not value or len(value) <= TITLE_LIMIT:
@@ -516,7 +527,7 @@ class NotionTemplateClient:
         adopted = False
         current = existing.get(note.note_id)
         if current is None:
-            legacy = existing.get(f"__legacy__{_clip_text(note.content)}|{chapter}")
+            legacy = existing.get(f"__legacy__{_title_text(note.content)}|{chapter}")
             if legacy is not None:
                 current = legacy
                 adopted = True
@@ -528,13 +539,13 @@ class NotionTemplateClient:
                 )
                 existing[note.note_id] = {
                     "page_id": page["id"],
-                    "content": _clip_text(note.content),
+                    "content": _title_text(note.content),
                     "chapter": chapter,
                 }
                 await self._sync_overflow(page["id"], note.content)
                 return "created"
 
-        content_changed = current.get("content") != _clip_text(note.content)
+        content_changed = current.get("content") != _title_text(note.content)
         chapter_changed = current.get("chapter") != chapter
         long_content = len(note.content) > TITLE_LIMIT
         property_dirty = content_changed or chapter_changed or adopted
@@ -555,7 +566,7 @@ class NotionTemplateClient:
             )
         existing[note.note_id] = {
             "page_id": current["page_id"],
-            "content": _clip_text(note.content),
+            "content": _title_text(note.content),
             "chapter": chapter,
         }
         if body_dirty:
@@ -566,7 +577,7 @@ class NotionTemplateClient:
         self, database_key: str, book_page_id: str, note: ReadingNote, chapter: str
     ) -> Dict[str, Any]:
         properties: Dict[str, Any] = {
-            "内容": self._title(note.content),
+            "内容": self._title(_title_text(note.content)),
             "书籍": self._relation([book_page_id]),
             "创建时间": _plain_date(note.create_time),
             "章节": self._rich_text(chapter),
